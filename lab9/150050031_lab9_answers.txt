@@ -1,0 +1,203 @@
+1. explain analyze select * from course where exists (select * from takes where takes.course_id=course.course_id);
+                                                            QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop Semi Join  (cost=0.29..254.08 rows=85 width=35) (actual time=9.239..161.319 rows=85 loops=1)
+   ->  Seq Scan on course  (cost=0.00..4.00 rows=200 width=35) (actual time=0.010..0.086 rows=200 loops=1)
+   ->  Index Only Scan using takes_pkey on takes  (cost=0.29..237.10 rows=353 width=4) (actual time=0.804..0.804 rows=0 loops=200)
+         Index Cond: (course_id = (course.course_id)::text)
+         Heap Fetches: 85
+ Planning time: 0.285 ms
+ Execution time: 161.357 ms
+(7 rows)
+
+We get a semi join because we only want the columns from the course relation which have a "match" in takes i.e. we have a takes row with a course_id matching that in the outer loop. Since course_id is a part of the primary key, postgres decides to do an index scan using the primary key index. This happens for all tuples in course. If a match is found then the particular tuple in course is kept otherwise thrown away (semi join).
+
+2. explain analyze select * from course where not exists (select * from takes where takes.course_id=course.course_id);
+                                                            QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop Anti Join  (cost=0.29..254.08 rows=115 width=35) (actual time=6.212..159.206 rows=115 loops=1)
+   ->  Seq Scan on course  (cost=0.00..4.00 rows=200 width=35) (actual time=0.028..0.087 rows=200 loops=1)
+   ->  Index Only Scan using takes_pkey on takes  (cost=0.29..237.10 rows=353 width=4) (actual time=0.794..0.794 rows=0 loops=200)
+         Index Cond: (course_id = (course.course_id)::text)
+         Heap Fetches: 85
+ Planning time: 1.213 ms
+ Execution time: 159.421 ms
+(7 rows)
+
+We get a anti join because we only want the columns from the course relation which don't have a "match" in takes i.e. we don't have any takes row with a course_id matching that in the outer loop. Since course_id is a part of the primary key, postgres decides to do an index scan using the primary key index. This happens for all tuples in course. If no match is found then the particular tuple in course is kept otherwise thrown away (anti join).
+
+3. postgres=# explain analyze create table t1 as select distinct course_id from takes;
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
+ HashAggregate  (cost=595.00..595.85 rows=85 width=4) (actual time=10.356..10.383 rows=85 loops=1)
+   Group Key: course_id
+   ->  Seq Scan on takes  (cost=0.00..520.00 rows=30000 width=4) (actual time=0.013..3.238 rows=30000 loops=1)
+ Planning time: 0.067 ms
+ Execution time: 12.890 ms
+(5 rows)
+
+
+
+explain analyze select * from course, t1 where t1.course_id=course.course_id;
+                                                   QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=6.50..47.61 rows=1310 width=69) (actual time=0.160..0.217 rows=85 loops=1)
+   Hash Cond: ((t1.course_id)::text = (course.course_id)::text)
+   ->  Seq Scan on t1  (cost=0.00..23.10 rows=1310 width=34) (actual time=0.013..0.024 rows=85 loops=1)
+   ->  Hash  (cost=4.00..4.00 rows=200 width=35) (actual time=0.102..0.102 rows=200 loops=1)
+         Buckets: 1024  Batches: 1  Memory Usage: 22kB
+         ->  Seq Scan on course  (cost=0.00..4.00 rows=200 width=35) (actual time=0.008..0.034 rows=200 loops=1)
+ Planning time: 0.189 ms
+ Execution time: 0.248 ms
+(8 rows)
+
+Estimated Time:
+The table creation has a high expected cost which surpasses that of the expected cost of the original query(1). So overall this method is expected to be slower.
+
+Actual time:
+The table creation takes some time but the overall total time is still less than the previous method. This happens since now it converts to a hash join which gets completed faster. Also the number of tuples in t1 < number of tuples in takes.
+
+4. explain analyze select * from course where (select count(*) from takes where takes.course_id=course.course_id) > 500;
+ Seq Scan on course  (cost=0.00..119183.00 rows=67 width=35) (actual time=44.029..646.018 rows=14 loops=1)
+   Filter: ((SubPlan 1) > 500)
+   Rows Removed by Filter: 186
+   SubPlan 1
+     ->  Aggregate  (cost=595.88..595.89 rows=1 width=8) (actual time=3.228..3.228 rows=1 loops=200)
+           ->  Seq Scan on takes  (cost=0.00..595.00 rows=353 width=0) (actual time=1.856..3.211 rows=150 loops=200)
+                 Filter: ((course_id)::text = (course.course_id)::text)
+                 Rows Removed by Filter: 29850
+ Planning time: 0.229 ms
+ Execution time: 646.138 ms
+
+5. explain analyze create materialized view tview as select distinct course_id from takes;
+ HashAggregate  (cost=595.00..595.85 rows=85 width=4) (actual time=13.484..13.498 rows=85 loops=1)
+   Group Key: course_id
+   ->  Seq Scan on takes  (cost=0.00..520.00 rows=30000 width=4) (actual time=0.019..6.324 rows=30000 loops=1)
+ Planning time: 0.078 ms
+ Execution time: 17.613 ms
+
+6. explain analyze select count(*) from tview;
+ Aggregate  (cost=26.38..26.39 rows=1 width=8) (actual time=0.035..0.036 rows=1 loops=1)
+   ->  Seq Scan on tview  (cost=0.00..23.10 rows=1310 width=0) (actual time=0.012..0.020 rows=85 loops=1)
+ Planning time: 0.124 ms
+ Execution time: 0.060 ms
+
+Expected cost: 26.39
+Actual time: 0.060 ms
+
+explain analyze select count(*) from (select distinct course_id from takes) as hack;
+ Aggregate  (cost=596.91..596.92 rows=1 width=8) (actual time=10.629..10.629 rows=1 loops=1)
+   ->  HashAggregate  (cost=595.00..595.85 rows=85 width=4) (actual time=10.604..10.618 rows=85 loops=1)
+         Group Key: takes.course_id
+         ->  Seq Scan on takes  (cost=0.00..520.00 rows=30000 width=4) (actual time=0.015..3.270 rows=30000 loops=1)
+ Planning time: 0.089 ms
+ Execution time: 10.678 ms
+
+Expected cost: 596.92
+Actual cost: 10.678 ms
+
+7. explain analyze select count(*) from tsview where id='1234';
+ Aggregate  (cost=666.04..666.05 rows=1 width=8) (actual time=5.562..5.562 rows=1 loops=1)
+   ->  Seq Scan on tsview  (cost=0.00..666.00 rows=15 width=0) (actual time=5.559..5.559 rows=0 loops=1)
+         Filter: ((id)::text = '1234'::text)
+         Rows Removed by Filter: 30000
+ Planning time: 0.166 ms
+ Execution time: 5.606 ms
+
+ explain analyze select count(*) from (select * from takes natural join student) as hack where id='1234';
+ Aggregate  (cost=61.32..61.33 rows=1 width=8) (actual time=0.015..0.015 rows=1 loops=1)
+   ->  Nested Loop  (cost=4.68..61.29 rows=15 width=0) (actual time=0.013..0.013 rows=0 loops=1)
+         ->  Index Only Scan using student_pkey on student  (cost=0.28..8.29 rows=1 width=5) (actual time=0.013..0.013 rows=0 loops=1)
+               Index Cond: (id = '1234'::text)
+               Heap Fetches: 0
+         ->  Bitmap Heap Scan on takes  (cost=4.40..52.84 rows=15 width=5) (never executed)
+               Recheck Cond: ((id)::text = '1234'::text)
+               ->  Bitmap Index Scan on takes_pkey  (cost=0.00..4.40 rows=15 width=0) (never executed)
+                     Index Cond: ((id)::text = '1234'::text)
+ Planning time: 0.133 ms
+ Execution time: 0.110 ms
+
+
+The time taken in case of materialized view is more because it has to do a sequential search while the other one can do an index search. Ideally the optimiser should have checked if the materialized view has a index defined on it, if not then it should have checked whether indexes on the tables which were used to define the view can be used for the query plan.
+
+8. explain analyze select count(*) from bigtakes;
+ Finalize Aggregate  (cost=161500.20..161500.21 rows=1 width=8) (actual time=1699.666..1699.666 rows=1 loops=1)
+   ->  Gather  (cost=161499.78..161500.19 rows=4 width=8) (actual time=1699.498..1699.658 rows=5 loops=1)
+         Workers Planned: 4
+         Workers Launched: 4
+         ->  Partial Aggregate  (cost=160499.78..160499.79 rows=1 width=8) (actual time=1678.415..1678.415 rows=1 loops=5)
+               ->  Parallel Seq Scan on bigtakes  (cost=0.00..150902.42 rows=3838942 width=0) (actual time=1.631..1225.048 rows=3072000 loops=5)
+ Planning time: 0.051 ms
+ Execution time: 1704.972 ms
+
+There are a total of 15360000 rows in the table as of now. Due to a large table the work is divided in 4 workes + the base process (so total 5). They all calculate their portion and then there is a gathering to calculate overall total count.
+
+9.
+
+(1) ---First window---
+ postgres=# begin ;
+BEGIN
+postgres=# select tot_cred from student where name = 'Rumat';
+ tot_cred
+----------
+      100
+(1 row)
+
+postgres=# update student set tot_cred = 55 where name = 'Rumat';
+UPDATE 1
+postgres=# commit;
+COMMIT
+
+-----------Second Window--------------
+
+postgres=# begin;
+BEGIN
+postgres=# select tot_cred from student where name = 'Rumat';
+      100
+
+postgres=# commit;
+COMMIT
+postgres=# select tot_cred from student where name = 'Rumat';
+       55
+
+We read 100 (old value) because the changes made in the first window have not yet been committed. So before the transaction is complete the updates are being stored locally. There are no snapshots involved. As soon as the first window commits, the second one will be able to see the new value.
+
+(2) ------ First window -----
+
+postgres=# begin;
+BEGIN
+postgres=# set transaction isolation level serializable;
+SET
+postgres=#
+postgres=# update instructor set salary = (select salary from instructor where id = '63395') where id = '78699';
+UPDATE 1
+postgres=# commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+DETAIL:  Reason code: Canceled on identification as a pivot, during commit attempt.
+HINT:  The transaction might succeed if retried.
+postgres=# select id, salary from instructor where id in('63395', '78699')
+postgres-# ;
+  id   |  salary
+-------+----------
+ 78699 | 59303.62
+ 63395 | 59303.62
+(2 rows)
+
+
+--------Second window--------------
+postgres=# begin;
+BEGIN
+postgres=# set transaction isolation level serializable;
+SET
+postgres=# update instructor set salary = (select salary from instructor where id = '78699') where id = '63395';
+UPDATE 1
+postgres=# commit;
+COMMIT
+
+
+ERROR:  could not serialize access due to read/write dependencies among transactions
+DETAIL:  Reason code: Canceled on identification as a pivot, during commit attempt.
+HINT:  The transaction might succeed if retried.
+
+The query commited first(second window) was successful. The other one got the above error. This is because both of them were working on their own snapshots. After one of them(second window) commits, the other one(first window) is not allowing to commit becuase the query in the first window read a value from the table in an update query which has now gotten updated i.e. if the same query was run on the original database it would have lead to a different result. To avoid this conflict, postgres raises an error.
+

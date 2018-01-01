@@ -1,0 +1,161 @@
+1. postgres=# explain analyze select * from section where course_id = 'CS-101';
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Seq Scan on section  (cost=0.00..2.25 rows=1 width=28) (actual time=0.028..0.028 rows=0 loops=1)
+   Filter: ((course_id)::text = 'CS-101'::text)
+   Rows Removed by Filter: 100
+ Planning time: 0.129 ms
+ Execution time: 0.069 ms
+(5 rows)
+
+
+2. create index name_idx on student(name);
+explain analyze select * from student where name='Schrefl';
+                                                   QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on student  (cost=4.31..14.16 rows=4 width=24) (actual time=0.033..0.036 rows=4 loops=1)
+   Recheck Cond: ((name)::text = 'Schrefl'::text)
+   Heap Blocks: exact=3
+   ->  Bitmap Index Scan on name_idx  (cost=0.00..4.31 rows=4 width=0) (actual time=0.027..0.027 rows=4 loops=1)
+         Index Cond: ((name)::text = 'Schrefl'::text)
+ Planning time: 0.111 ms
+ Execution time: 0.096 ms
+(7 rows)
+
+
+3. explain analyze select * from student where name='Schrefl' and id='1234';
+                                                      QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------
+ Index Scan using student_pkey on student  (cost=0.28..8.30 rows=1 width=24) (actual time=0.049..0.049 rows=0 loops=1)
+   Index Cond: ((id)::text = '1234'::text)
+   Filter: ((name)::text = 'Schrefl'::text)
+ Planning time: 0.087 ms
+ Execution time: 0.096 ms
+(5 rows)
+
+Time: 0.571 ms
+
+
+4. postgres=# explain analyze select * from student, takes where (takes.id, takes.course_id, takes.sec_id, takes.semester, takes.year)  = ('65901', '401', '1', 'Fall', '2003') and student.id = '1234';
+                                                                                          QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=0.56..16.62 rows=1 width=48) (actual time=0.013..0.013 rows=0 loops=1)
+   ->  Index Scan using student_pkey on student  (cost=0.28..8.29 rows=1 width=24) (actual time=0.013..0.013 rows=0 loops=1)
+         Index Cond: ((id)::text = '1234'::text)
+   ->  Index Scan using takes_pkey on takes  (cost=0.29..8.31 rows=1 width=24) (never executed)
+         Index Cond: (((id)::text = '65901'::text) AND ((course_id)::text = '401'::text) AND ((sec_id)::text = '1'::text) AND ((semester)::text = 'Fall'::text) AND (year = '2003'::numeric))
+ Planning time: 0.222 ms
+ Execution time: 0.052 ms
+(7 rows)
+
+Time: 0.807 ms
+
+
+5. explain analyze select * from student, takes where upper(student.id) = upper(takes.id);
+                                                      QUERY PLAN
+-----------------------------------------------------------------------------------------------------------------------
+ Merge Join  (cost=2895.56..8915.56 rows=300000 width=48) (actual time=48.807..58.879 rows=30000 loops=1)
+   Merge Cond: ((upper((student.id)::text)) = (upper((takes.id)::text)))
+   ->  Sort  (cost=144.66..149.66 rows=2000 width=24) (actual time=3.281..3.567 rows=2000 loops=1)
+         Sort Key: (upper((student.id)::text))
+         Sort Method: quicksort  Memory: 205kB
+         ->  Seq Scan on student  (cost=0.00..35.00 rows=2000 width=24) (actual time=0.037..1.362 rows=2000 loops=1)
+   ->  Sort  (cost=2750.90..2825.90 rows=30000 width=24) (actual time=45.479..48.840 rows=30000 loops=1)
+         Sort Key: (upper((takes.id)::text))
+         Sort Method: quicksort  Memory: 3112kB
+         ->  Seq Scan on takes  (cost=0.00..520.00 rows=30000 width=24) (actual time=0.063..20.702 rows=30000 loops=1)
+ Planning time: 0.146 ms
+ Execution time: 60.205 ms
+(12 rows)
+
+Time: 60.898 ms
+
+[Interesting case - Merge join without order by :)]
+
+6. explain analyze select * from student, takes where upper(student.id) = upper(takes.id) limit 10;
+                                                        QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.00..40.02 rows=10 width=48) (actual time=1.677..14.685 rows=10 loops=1)
+   ->  Nested Loop  (cost=0.00..1200560.00 rows=300000 width=48) (actual time=1.676..14.680 rows=10 loops=1)
+         Join Filter: (upper((student.id)::text) = upper((takes.id)::text))
+         Rows Removed by Join Filter: 18182
+         ->  Seq Scan on takes  (cost=0.00..520.00 rows=30000 width=24) (actual time=0.070..0.076 rows=10 loops=1)
+         ->  Materialize  (cost=0.00..45.00 rows=2000 width=24) (actual time=0.006..0.219 rows=1819 loops=10)
+               ->  Seq Scan on student  (cost=0.00..35.00 rows=2000 width=24) (actual time=0.022..0.358 rows=2000 loops=1)
+ Planning time: 0.299 ms
+ Execution time: 14.772 ms
+(9 rows)
+
+Time: 15.986 ms
+
+
+This happens because since only 10 rows are required now there is no point sorting the whole student and takes relation on upper(id). Also since takes has a foreign key to the student id, the first 10 rows in the takes relation will match with some student and hence be present in the join. So the outer loop only has 10 rows. Corresponding to that we find the tuple for student and we exit. There is significant increase in performance.
+
+
+7. create index i1 on takes(id, semester, year);
+CREATE INDEX
+Time: 78.980 ms
+
+drop index i1;
+DROP INDEX
+Time: 9.948 ms
+
+
+8.1 begin;
+
+8.2 explain analyze delete from course where course_id = '400';
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Delete on course  (cost=0.00..4.50 rows=1 width=6) (actual time=2.373..2.373 rows=0 loops=1)
+   ->  Seq Scan on course  (cost=0.00..4.50 rows=1 width=6) (actual time=0.078..0.834 rows=1 loops=1)
+         Filter: ((course_id)::text = '400'::text)
+         Rows Removed by Filter: 199
+ Planning time: 0.373 ms
+ Trigger for constraint section_course_id_fkey on course: time=5.368 calls=1
+ Trigger for constraint prereq_course_id_fkey on course: time=2.548 calls=1
+ Trigger for constraint prereq_prereq_id_fkey on course: time=3.081 calls=1
+ Trigger for constraint teaches_course_id_fkey on section: time=3.450 calls=2
+ Trigger for constraint takes_course_id_fkey on section: time=11.546 calls=2
+ Execution time: 28.753 ms
+(11 rows)
+
+Time: 33.218 ms
+
+8.3 rollback;
+
+8.4 postgres=# create index i1 on section (course_id);
+CREATE INDEX
+Time: 3.251 ms
+postgres=# create index i2 on prereq (course_id);
+CREATE INDEX
+Time: 2.935 ms
+postgres=# create index i3 on prereq(prereq_id);
+CREATE INDEX
+Time: 2.929 ms
+postgres=# create index i4 on teaches(course_id, sec_id, semester, year);
+CREATE INDEX
+Time: 4.840 ms
+postgres=# create index i5 on takes(course_id, sec_id, semester, year);
+CREATE INDEX
+Time: 101.843 ms
+
+8.5 explain analyze delete from course where course_id = '400';
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ Delete on course  (cost=0.00..4.50 rows=1 width=6) (actual time=0.119..0.119 rows=0 loops=1)
+   ->  Seq Scan on course  (cost=0.00..4.50 rows=1 width=6) (actual time=0.030..0.065 rows=1 loops=1)
+         Filter: ((course_id)::text = '400'::text)
+         Rows Removed by Filter: 199
+ Planning time: 0.098 ms
+ Trigger for constraint section_course_id_fkey on course: time=1.761 calls=1
+ Trigger for constraint prereq_course_id_fkey on course: time=1.235 calls=1
+ Trigger for constraint prereq_prereq_id_fkey on course: time=0.273 calls=1
+ Trigger for constraint teaches_course_id_fkey on section: time=0.907 calls=2
+ Trigger for constraint takes_course_id_fkey on section: time=4.038 calls=2
+ Execution time: 8.380 ms
+(11 rows)
+
+Time: 8.853 ms
+
+8.6 Since we have "on delete cascase" on the foreign key relations, all the tuples in the other tables have to be deleted when the tuple in the course relation is deleted. We will have to find all the tuples in the referring relations with course_id as the deleted id. When we have indexes on the foreign key, it is faster to find all these tuples for deleting them.
+

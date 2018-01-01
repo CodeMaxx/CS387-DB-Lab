@@ -1,0 +1,33 @@
+Akash Trehan - 150050031
+
+I haven't used the .jar file.
+
+Put the .java(src) and index.html(Webcontent) in the appropriate location.
+
+Use the create.sql file to create tables and populate them.
+I also have some drop table statements at the top which shouldn't hurt.
+
+The Login.java has the connection details, port no., username etc. Please edit it according to need.
+
+Run server.
+
+index.html has a login link.
+
+Login using id: '0001'   password: '0001'
+(works similarly for 0001 through 0007)
+
+It will already show posts from followers.
+
+To see posts from specific ID, use the search box.
+
+Home button brings back the follow posts.
+
+Use the Add Post button to write a post. Use the box to write it. Then click on publish. A popup will tell you if the post has been done successfully. You'll come back to whichever posts you were looking at before.
+
+More button will be there at the end of the page if there are more posts.
+Similarly if there are more than 3 comments there'll be a more button.
+Clicking them will display 10 new posts or rest of the comments respectively.
+
+There is a Following button which can be used to see who you are following. You can also unfollow with the X button as according to the specification.
+
+Use the logout link at the bottom of the page to sign out.

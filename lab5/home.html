@@ -1,0 +1,322 @@
+
+<html><head><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css">
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+        <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+        <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+<script type="text/javascript">
+            var offset = 0;
+            var limit = 10;
+            
+
+            var more_posts = 1;
+
+            var showing_user = '';
+            var dict = {}; //new
+
+            $(document).ready(function() {
+                var allIDs = [{ label: "0001 | Ron Weasley | ron@hp.magic", value: "0001"}, { label: "0002 | Hermione Granger | nerd@hp.magic", value: "0002"}, { label: "0003 | Harry Potter | theboywholived@hp.magic", value: "0003"}, { label: "0004 | Lord Voldemort | voldy@hp.magic", value: "0004"}, { label: "0005 | Severus Snape | halfbloodprince@hp.magic", value: "0005"}, { label: "0006 | Draco Malfoy | dmalfoy@hp.magic", value: "0006"}, { label: "0007 | Sirius Black | godfather@hp.magic", value: "0007"},];
+
+                var show_write = function() {
+                    $("#content").hide();
+                    $("#write_post").show();
+                    $("#follow_table").hide();
+                };
+
+                var show_content = function() {
+                    $("#write_post").hide();
+                    $("#content").show();
+                    $("#follow_table").hide();
+                };
+
+                var show_table = function() {
+                    $("#write_post").hide();
+                    $("#content").hide();
+                    $("#follow_table").show();
+                }
+
+                $("#write_post").hide();
+
+                $("body").on('click', '#more_home_post', function(){
+                    $.post("./GetPosts",
+                        {
+                            id: "*",
+                            type: "follow",
+                            offset: window.offset.toString(),
+                            limit: window.limit.toString(),
+                        },
+                        function(data, status){
+                            $('#more_home_post').remove();
+                            var all_parsed_data = JSON.parse(data);
+                            var s = '';
+                            var parsed_data = all_parsed_data[0]['posts'];
+
+                            window.more_posts = all_parsed_data[0]['more'];
+                            for(var key in parsed_data) {
+                                s += "<b>" + parsed_data[key].name + "</b><br>";
+                                s += parsed_data[key].text + "<br>" + parsed_data[key].date_trunc + "<br><br>";
+                                var comments = parsed_data[key].comments
+                                s += "<div id='" + parsed_data[key].postid + "'>"
+                                for(var comkey in comments) {
+                                    s += "<i>" + comments[comkey].name + ":</i>";
+                                    s += comments[comkey].text + "<br>" + comments[comkey].date_trunc + "<br>";
+                                }
+                                s += "</div>";
+                                if(window.more_posts)
+                                    s += "<button id='more_home_post'>More</button>\n"
+                                s += "<hr>";
+                            }
+                            $("#content").append(s);
+                            window.offset += 10;
+                    });
+                });
+
+                $("body").on('click', '#more_all_post', function(){
+                    $.post("./GetPosts",
+                        {
+                                id: window.showing_user.toString(),
+                                type: "all",
+                                offset: window.offset.toString(),
+                                limit: window.limit.toString(),
+                        },
+                        function(data, status){
+                            $('#more_all_post').remove();
+                            var all_parsed_data = JSON.parse(data);
+                            var s = '';
+                            var parsed_data = all_parsed_data[0]['posts'];
+
+                            window.more_posts = all_parsed_data[0]['more'];
+                            for(var key in parsed_data) {
+                                s += "<b>" + parsed_data[key].name + "</b><br>";
+                                s += parsed_data[key].text + "<br>" + parsed_data[key].date_trunc + "<br><br>";
+                                var comments = parsed_data[key].comments
+                                s += "<div id='" + parsed_data[key].postid + "'>"
+                                for(var comkey in comments) {
+                                    s += "<i>" + comments[comkey].name + ":</i>";
+                                    s += comments[comkey].text + "<br>" + comments[comkey].date_trunc + "<br>";
+                                }
+                                s += "</div>";
+                                if(window.more_posts)
+                                    s += "<button id='more_all_post'>More</button>\n"
+                                s += "<hr>";
+                            }
+                            $("#content").append(s);
+                            window.offset += 10;
+                    });
+                });
+
+                $("#home_button").click(function(){
+                    showcontent();
+                    $.post("./GetPosts",
+                        {
+                            id: "*",
+                            type: "follow",
+                            offset: 0,
+                            limit: window.limit.toString(),
+                        },
+                        function(data, status){
+                            var all_parsed_data = JSON.parse(data);
+                            var s = '';
+                            var parsed_data = all_parsed_data[0]['posts'];
+
+                            window.more_posts = all_parsed_data[0]['more'];
+                            for(var key in parsed_data) {
+                                s += "<b>" + parsed_data[key].name + "</b><br>";
+                                s += parsed_data[key].text + "<br>" + parsed_data[key].date_trunc + "<br><br>";
+                                var comments = parsed_data[key].comments
+                                s += "<div id='" + parsed_data[key].postid + "'>"
+                                var j ='';
+                                var more = 0;
+                                for(var comkey in comments) {
+                                    if(comkey < 3) {//new
+                                        s += "<i>" + comments[comkey].name + ":</i>";
+                                        s += comments[comkey].text + "<br>" + comments[comkey].date_trunc + "<br>";
+                                    }
+                                    else
+                                        more = 1;
+                                    j += "<i>" + comments[comkey].name + ":</i>";
+                                    j += comments[comkey].text + "<br>" + comments[comkey].date_trunc + "<br>";
+                                }
+                                if(more)
+                                    s += "<button postid='" + parsed_data[key].postid + "' onClick='more_comments(this)'>More</button>";
+                                window.dict[parsed_data[key].postid] = j;
+                                s += "</div>";
+                                s += "<hr>";
+                            }
+                            if(window.more_posts)
+                                    s += "<button id='more_home_post'>More</button>\n"
+                            $("#content").html(s);
+                            window.offset = 10;
+                    });
+                });
+
+            $("#uid").autocomplete({
+                    source: allIDs,
+                    select: function(event, ui) {
+                        showcontent();
+                        var userid = ui.item.value;
+                        window.showing_user = ui.item.value;
+                        $.post("./GetPosts",
+                            {
+                                id: userid,
+                                type: "all",
+                                offset: 0,
+                                limit: window.limit.toString(),
+                            },
+                            function(data, status){
+                            var all_parsed_data = JSON.parse(data);
+                            var s = '';
+                            var parsed_data = all_parsed_data[0]['posts'];
+
+                            window.more_posts = all_parsed_data[0]['more'];
+                            for(var key in parsed_data) {
+                                s += "<b>" + parsed_data[key].name + "</b><br>";
+                                s += parsed_data[key].text + "<br>" + parsed_data[key].date_trunc + "<br><br>";
+                                var comments = parsed_data[key].comments
+                                s += "<div id='" + parsed_data[key].postid + "'>"
+                                var j ='';
+                                var more = 0;
+                                for(var comkey in comments) {
+                                    if(comkey < 3) {//new
+                                        s += "<i>" + comments[comkey].name + ":</i>";
+                                        s += comments[comkey].text + "<br>" + comments[comkey].date_trunc + "<br>";
+                                    }
+                                    else
+                                        more = 1;
+                                    j += "<i>" + comments[comkey].name + ":</i>";
+                                    j += comments[comkey].text + "<br>" + comments[comkey].date_trunc + "<br>";
+                                }
+                                if(more)
+                                    s += "<button postid='" + parsed_data[key].postid + "' onClick='more_comments(this)'>More</button>";
+                                window.dict[parsed_data[key].postid] = j;
+                                s += "</div>";
+                                s += "<hr>";
+                            }
+                            if(window.more_posts)
+                                    s += "<button id='more_all_post'>More</button>\n";
+                            $("#content").html(s);
+                            window.offset = 10;
+                    });
+                        ui.item.value = '';
+                        $('#uid').innerHTML = '';                    }
+                });
+
+                $("#add_post").click(function(){
+                    hidecontent();
+                });
+
+                $("#following").click(function(){
+                    $.post("./GetFollow",{
+                        id: "0000",
+                        unfollow: 0,
+                    },
+                    function(data, status) {
+                        var all_parsed_data = JSON.parse(data);
+                        var s = "";
+                        for(var key in parsed_data) {
+                            s += "<tr>";
+                            s += "<td>" + parsed_data[key].uid + "</td>";
+                            s += "<td>" + parsed_data[key].name + "</td>";
+                            s += "<td><input type='button' user='"+ parsed_data[key].uid + "' value='X' onclick='deleteRow(this)'></td>";
+                            s += "</tr>";
+                        }
+                        $("follow_table").html(s);
+                    });
+                });
+
+            $("#publish").click(function(event){
+                    event.preventDefault();
+                    var url = $("post_form").attr( 'action' );
+                    var cont = $("#cont").val();
+                    $.post('./WritePost',
+                        { content: cont },
+                        function( data ) {
+                            alert(data);
+                        });
+                    document.getElementById("cont").value = '';
+                    showcontent();
+                });
+                $("#home_button").click();
+            });
+        </script>
+
+        <style>
+table {
+    font-family: arial, sans-serif;
+    border-collapse: collapse;
+    width: 100%;
+}
+
+td, th {
+    border: 1px solid #dddddd;
+    text-align: left;
+    padding: 8px;
+}
+
+tr:nth-child(even) {
+    background-color: #dddddd;
+}
+</style>
+
+<script>
+function deleteRow(r) {
+    if (confirm('Are you sure ?')) {
+        var i = r.parentNode.parentNode.rowIndex;
+        var user = $(r).attr("user");
+        console.log(user);
+        $.post("./GetFollow",{
+            id: user,
+            unfollow: 1,
+        },
+        function(data, status) {
+            console.log("unfollowed");
+        });
+        document.getElementById("follow_table").deleteRow(i);
+    }
+}
+</script>
+
+<script>
+function more_comments(r) {
+    var post = $(r).attr("postid");
+    $.post("./GetComments",{
+        postid: post,
+    },
+    function(data, status){
+        var comments = JSON.parse(data);
+        var s = '';
+        for(var comkey in comments) {
+            s += "<i>" + comments[comkey].name + ":</i>";
+            s += comments[comkey].text + "<br>" + comments[comkey].date_trunc + "<br>";
+        }
+        $("#"+post).html(s);
+    })
+}
+</script>
+    </head>
+    <body>
+        <button class="ui-button ui-widget ui-corner-all" id="home_button">Home</button>
+        <button class="ui-button ui-widget ui-corner-all" id="add_post">Add Post</button>
+        <button class=\"ui-button ui-widget ui-corner-all\" id=\"following\">Following</button>
+
+        <br><br>
+
+        <div class="ui-widget">
+            <label>Search: </label>
+            <input id="uid">
+        </div>
+        <br>
+<hr>
+        <div id="content">
+        </div>
+
+        <div id="write_post">
+            <form action="./WritePost" method="post" id="post_form">
+                <input type="text" name="cont" id="cont">
+                <input class="ui-button ui-widget ui-corner-all" id="publish" type="submit" value="Publish">
+            </form>
+        </div>
+
+        <table id="follow_table"></table>
+<a href="./Logout">Logout</a>    </body>
+</html>
+

@@ -1,0 +1,1 @@
+Change the `path` variable(it is a private static final class variable) in class Voldemort to the directory where the files are to be read from.

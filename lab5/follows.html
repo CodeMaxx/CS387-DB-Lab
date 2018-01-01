@@ -1,0 +1,74 @@
+<html><head><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css">
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+        <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+        <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+
+<script type="text/javascript">
+
+$(document).ready(function() {
+    $.post("./GetFollow",{
+        id: "0000",
+        unfollow: 0,
+    },
+    function(data, status) {
+        var all_parsed_data = JSON.parse(data);
+        var s = "";
+        for(var key in parsed_data) {
+            s += "<tr>";
+            s += "<td>" + parsed_data[key].uid + "</td>";
+            s += "<td>" + parsed_data[key].name + "</td>";
+            s += "<td><input type='button' user='"+ parsed_data[key].uid + "' value='X' onclick='deleteRow(this)'></td>";
+            s += "</tr>";
+        }
+    });
+
+
+});
+
+</script>
+
+<script>
+function deleteRow(r) {
+    var i = r.parentNode.parentNode.rowIndex;
+    var user = r.attr("user");
+    console.log(user);
+    $.post("./GetFollow",{
+        id: user,
+        unfollow: 1,
+    },
+    function(data, status) {
+        console.log("unfollowed");
+    });
+    document.getElementById("myTable").deleteRow(i);
+}
+</script>
+
+<style>
+table {
+    font-family: arial, sans-serif;
+    border-collapse: collapse;
+    width: 100%;
+}
+
+td, th {
+    border: 1px solid #dddddd;
+    text-align: left;
+    padding: 8px;
+}
+
+tr:nth-child(even) {
+    background-color: #dddddd;
+}
+</style>
+
+</head>
+
+<body>
+
+<table id="follow_table">
+
+</table>
+<a href="./Logout">Logout</a>
+
+</body>
+</html>
